@@ -1,0 +1,2187 @@
+openapi: 3.0.3
+
+info:
+  title: Appsline API
+  version: 1.0.0
+  description: |
+    API REST del backend **Appsline**: gestión de proyectos, tareas (tablero kanban),
+    comentarios, archivos adjuntos, leads públicos y métricas de dashboard.
+
+    ### Envolvole de respuesta
+    La mayoría de los endpoints autenticados responde con el *envelope* definido en
+    `App\Http\Controllers\API\BaseController::sendResponse()`:
+
+    ```json
+    { "success": true, "data": { }, "message": "..." }
+    ```
+
+    y los errores con `sendError()`:
+
+    ```json
+    { "success": false, "message": "Unauthorised.", "data": { "error": "Unauthorised" } }
+    ```
+
+    Los controladores que devuelven **Api Resources** directamente (`/users`,
+    `/posts` en algunos casos, comentarios y archivos de tarea) añaden su propio
+    envoltorio `data`, por lo que en varios endpoints la colección llega doblemente
+    envuelta: '`data.data[]`. Está documentado endpoint por endpoint.'
+
+    ### Autenticación
+    El grupo protegido usa el middleware `auth:api`, cuyo guard (`config/auth.php`)
+    está resuelto a **Passport** (`driver: passport`), por lo que se espera un
+    `Authorization: Bearer <access_token>`.
+
+    > ⚠️ **Deriva detectada en el código**: `POST /api/register` emite el token con
+    > `createToken()->plainTextToken` (estilo *Sanctum*), mientras que `POST /api/login`
+    > usa `createToken()->accessToken` (estilo *Passport*). Sólo el segundo funciona con
+    > el guard `api` actual. Ver sección *Notas* del README.
+
+    ### Cobertura
+    Este documento describe los endpoints **implementados**. El listado completo de rutas
+    declaradas en `routes/api.php` —incluidas las que apuntan a métodos vacíos de
+    controller— está en [`docs/API.md`](../docs/API.md); en este spec aparecen bajo el tag
+    **Sin implementar**.
+  contact:
+    name: Appsline API
+    email: dev@appsline.com
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8000/api
+    description: Servidor local (`php artisan serve`)
+  - url: https://{host}/api
+    description: Entorno desplegado
+    variables:
+      host:
+        default: api.appsline.com
+
+tags:
+  - name: Auth
+    description: Registro, login y logout (tokens de API).
+  - name: Proyectos
+    description: CRUD de proyectos privados del usuario autenticado.
+  - name: Tareas
+    description: Tareas de un proyecto (tablero, estados pending / in_progress / completed).
+  - name: Comentarios de tarea
+    description: Conversación de una tarea.
+  - name: Archivos de tarea
+    description: Adjuntos de una tarea (disk `public`).
+  - name: Dashboard
+    description: Métricas agregadas para los widgets y gráficas del panel.
+  - name: Usuarios
+    description: CRUD de usuarios.
+  - name: Posts
+    description: CRUD de posts del usuario autenticado.
+  - name: Público
+    description: Endpoints sin autenticación (`/api/public/*`).
+  - name: Sin implementar
+    description: >-
+      Rutas declaradas en `routes/api.php` cuyo controlador está vacío (no-code).
+      El catálogo completo de estas rutas está en `docs/API.md`.
+
+paths:
+  /:
+    get:
+      tags: [Auth]
+      summary: Ping de bienvenida
+      description: Smoke test de la API. Definido en `routes/api.php`.
+      operationId: apiRoot
+      security: []
+      responses:
+        "200":
+          description: API viva
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Welcome to the API
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /register:
+    post:
+      tags: [Auth]
+      summary: Registrar un usuario
+      description: |
+        Crea el usuario y devuelve un token de API. **No** usa el envelope `success`.
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name:
+                  type: string
+                  maxLength: 255
+                  example: Ada Lovelace
+                email:
+                  type: string
+                  format: email
+                  maxLength: 255
+                  example: ada@example.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: s3cret0pass
+      responses:
+        "201":
+          description: Usuario creado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    description: >-
+                      Token en texto plano (Sanctum-style). Ver nota de autenticación en `info`.
+                    example: "1|AbCdEfGh0123456789..."
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /login:
+    post:
+      tags: [Auth]
+      summary: Iniciar sesión
+      description: Devuelve el access token de Passport y el objeto de usuario.
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: ada@example.com
+                password:
+                  type: string
+                  format: password
+                  example: s3cret0pass
+      responses:
+        "200":
+          description: Login correcto
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+                        description: "Access token de Passport (JWT). Úsalo como `Authorization: Bearer …`."
+                        example: eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...
+                      user:
+                        $ref: "#/components/schemas/User"
+                  message:
+                    type: string
+                    example: User login successfully.
+        "422":
+          description: Credenciales faltantes (devuelve el bagaje de errores de validación crudo)
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items:
+                    type: string
+                example:
+                  email: ["The email field is required."]
+        "404":
+          description: Usuario inexistente (`sendError('Unauthorised.')`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /logout:
+    post:
+      tags: [Auth]
+      summary: Cerrar sesión
+      description: Elimina el token usado en la petición actual (`currentAccessToken()->delete()`).
+      operationId: logout
+      responses:
+        "200":
+          description: Sesión cerrada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Logged out
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /public/projects:
+    get:
+      tags: [Público]
+      summary: Listado público de proyectos
+      description: Devuelve todos los proyectos con proyección reducida (id, name, logo).
+      operationId: publicProjectsIndex
+      security: []
+      responses:
+        "200":
+          description: Proyectos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/PublicProject"
+                  message:
+                    type: string
+                    example: Projects retrieved successfully.
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /public/leads:
+    get:
+      tags: [Sin implementar]
+      summary: "[no implementado] GET /public/leads"
+      description: "`Public\\LeadController::index()` está vacío → responde `null`."
+      operationId: publicLeadsIndex
+      security: []
+      responses:
+        "200":
+          description: Respuesta vacía (sin cuerpo)
+        default:
+          $ref: "#/components/responses/Unexpected"
+    post:
+      tags: [Público]
+      summary: Crear un lead (formulario de contacto)
+      description: |
+        Endpoint público para captar leads.
+
+        > ⚠️ El modelo `App\Models\Lead` no declara `$fillable` / `$guarded`, así que
+        > `Lead::create($request->all())` lanza `MassAssignmentException` (HTTP 500)
+        > en `APP_DEBUG=false`. Añadir `protected $fillable = ['name','email','phone','message'];`
+        > al modelo lo resuelve.
+      operationId: publicLeadsStore
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email]
+              properties:
+                name:
+                  type: string
+                  maxLength: 255
+                  example: Grace Hopper
+                email:
+                  type: string
+                  format: email
+                  maxLength: 255
+                  example: grace@example.com
+                phone:
+                  type: string
+                  maxLength: 20
+                  nullable: true
+                  example: "+34 600 123 456"
+                message:
+                  type: string
+                  nullable: true
+                  example: Quiero una demo del gestor de proyectos.
+      responses:
+        "201":
+          description: Lead creado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: "#/components/schemas/Lead"
+                  message:
+                    type: string
+                    example: Lead created successfully.
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /projects:
+    get:
+      tags: [Proyectos]
+      summary: Listar proyectos
+      operationId: projectsIndex
+      responses:
+        "200":
+          description: Proyectos del sistema
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                    example: Projects retrieved successfully.
+                  data:
+                    type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Project"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    post:
+      tags: [Proyectos]
+      summary: Crear proyecto
+      description: |
+        `user_id` se toma del usuario autenticado y `start_date` se fija en `now()`.
+        Los campos `budget`, `end_date`, `client_name`, `client_email` y `client_phone`
+        son opcionales y se leen con `input()`.
+      operationId: projectsStore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  maxLength: 255
+                  example: Portal corporativo
+                description:
+                  type: string
+                  nullable: true
+                  example: Rediseño del sitio público
+                budget:
+                  type: number
+                  format: float
+                  default: 0
+                  example: 12000.5
+                end_date:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  example: "2026-12-31 23:59:59"
+                client_name:
+                  type: string
+                  nullable: true
+                  example: ACME S.L.
+                client_email:
+                  type: string
+                  format: email
+                  nullable: true
+                  example: cliente@acme.com
+                client_phone:
+                  type: string
+                  nullable: true
+                  example: "+34 910 000 000"
+      responses:
+        "200":
+          description: Proyecto creado (⚠️ `sendResponse` responde 200 aunque el controller pida 201)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Project created successfully.
+                  data:
+                    $ref: "#/components/schemas/Project"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /projects/{id}:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    get:
+      tags: [Proyectos]
+      summary: Obtener un proyecto
+      operationId: projectsShow
+      responses:
+        "200":
+          description: Proyecto
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                    example: Project retrieved successfully.
+                  data:
+                    $ref: "#/components/schemas/Project"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    put:
+      tags: [Proyectos]
+      summary: Actualizar un proyecto
+      description: |
+        Valida `name` (obligatorio, único ignorando el propio registro) y `description`
+        (opcional). Sólo esos dos campos se escriben.
+      operationId: projectsUpdate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  maxLength: 255
+                  example: Portal corporativo v2
+                description:
+                  type: string
+                  nullable: true
+                  example: Rediseño completo
+      responses:
+        "200":
+          description: Proyecto actualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                    example: Project updated successfully.
+                  data:
+                    $ref: "#/components/schemas/Project"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    patch:
+      tags: [Proyectos]
+      summary: Actualizar un proyecto (parcial)
+      description: Mismo handler que `PUT` (ruta `apiResource`).
+      operationId: projectsPatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  maxLength: 255
+                description:
+                  type: string
+                  nullable: true
+      responses:
+        "200":
+          description: Proyecto actualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    $ref: "#/components/schemas/Project"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    delete:
+      tags: [Proyectos]
+      summary: Eliminar un proyecto
+      description: |
+        Pasa por `ProjectPolicy::delete()`; como `Project` no tiene policy registrada de
+        forma explícita (`app/Policies` sólo define `PostPolicy`), puede devolver 403.
+      operationId: projectsDestroy
+      responses:
+        "204":
+          description: Sin contenido
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /projects/{id}/logo:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    post:
+      tags: [Proyectos]
+      summary: Subir el logo del proyecto
+      description: |
+        Guarda el archivo en `storage/app/public/projects/{id}/` y persiste la ruta
+        relativa en `projects.logo`. Requiere `php artisan storage:link` para que la
+        URL sea pública.
+      operationId: projectsLogoStore
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [logo]
+              properties:
+                logo:
+                  type: string
+                  format: binary
+                  description: jpeg, png, jpg, gif — máx. 2048 KB
+      responses:
+        "200":
+          description: Logo almacenado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Logo uploaded successfully.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /projects/{project_id}/tasks:
+    parameters:
+      - $ref: "#/components/parameters/ProjectIdPath"
+    get:
+      tags: [Tareas]
+      summary: Listar tareas de un proyecto
+      description: |
+        ⚠️ `data.tasks.data[]` — doble envoltorio: el envelope de `sendResponse` más el
+        de `ProjectTaskResource::collection()`.
+      operationId: tasksIndex
+      responses:
+        "200":
+          description: Tareas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                    example: Tasks
+                  data:
+                    type: object
+                    properties:
+                      tasks:
+                        type: object
+                        properties:
+                          data:
+                            type: array
+                            items:
+                              $ref: "#/components/schemas/Task"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    post:
+      tags: [Tareas]
+      summary: Crear una tarea
+      description: |
+        `status` es obligatorio pero sólo puede ser `pending` al crear.
+        `created_by` se fija con `auth()->id()`.
+        Si se asigna a un usuario se encola el mail `App\Mail\TaskAssigned`
+        (necesita worker de colas: `php artisan queue:work`).
+      operationId: tasksStore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, status]
+              properties:
+                title:
+                  type: string
+                  maxLength: 255
+                  example: Maquetar home
+                description:
+                  type: string
+                  nullable: true
+                  example: HTML + Tailwind sobre el boceto aprobado
+                status:
+                  type: string
+                  enum: [pending]
+                  description: Forzado a `pending` por la regla `in:pending`.
+                due_date:
+                  type: string
+                  format: date
+                  nullable: true
+                  example: "2026-11-30"
+                assigned_to:
+                  type: integer
+                  nullable: true
+                  description: '`id` de un usuario existente.'
+                  example: 3
+                estimated_hours:
+                  type: number
+                  format: float
+                  nullable: true
+                  example: 8
+                actual_hours:
+                  type: number
+                  format: float
+                  nullable: true
+                priority:
+                  type: string
+                  maxLength: 255
+                  nullable: true
+                  example: high
+                category:
+                  type: string
+                  maxLength: 255
+                  nullable: true
+                  example: frontend
+                tags:
+                  type: string
+                  maxLength: 255
+                  nullable: true
+                  description: Cadena simple (no array).
+                  example: ui,tailwind
+      responses:
+        "200":
+          description: Tarea creada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                    example: Task created successfully.
+                  data:
+                    $ref: "#/components/schemas/Task"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /projects/{project_id}/tasks/{task_id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectIdPath"
+      - name: task_id
+        in: path
+        required: true
+        description: ID de la tarea (ruta `apiResource` `{task}`).
+        schema:
+          type: integer
+          example: 12
+    get:
+      tags: [Tareas]
+      summary: Obtener una tarea
+      operationId: tasksShow
+      responses:
+        "200":
+          description: Tarea
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                    example: Task retrieved successfully.
+                  data:
+                    $ref: "#/components/schemas/Task"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    put:
+      tags: [Tareas]
+      summary: Actualizar una tarea
+      description: |
+        **Regla de negocio**: si `status` pasa a `completed` y la tarea no lo estaba,
+        el servidor calcula `actual_hours` (`(now - created_at)` en horas, 2 decimales)
+        y fija `completed_at` automáticamente. No hace falta enviarlos.
+      operationId: tasksUpdate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                project_id:
+                  type: integer
+                  description: '`sometimes|exists:projects,id`'
+                title:
+                  type: string
+                  maxLength: 255
+                description:
+                  type: string
+                  nullable: true
+                status:
+                  type: string
+                  enum: [pending, in_progress, completed]
+                due_date:
+                  type: string
+                  format: date
+                  nullable: true
+                assigned_to:
+                  type: integer
+                  nullable: true
+                estimated_hours:
+                  type: number
+                  format: float
+                  nullable: true
+                actual_hours:
+                  type: number
+                  format: float
+                  nullable: true
+                priority:
+                  type: string
+                  maxLength: 255
+                  nullable: true
+                attachment:
+                  type: string
+                  maxLength: 255
+                  nullable: true
+                category:
+                  type: string
+                  maxLength: 255
+                  nullable: true
+                tags:
+                  type: string
+                  maxLength: 255
+                  nullable: true
+                completed_at:
+                  type: string
+                  format: date-time
+                  nullable: true
+                created_by:
+                  type: integer
+      responses:
+        "200":
+          description: Tarea actualizada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                    example: Task updated successfully.
+                  data:
+                    $ref: "#/components/schemas/Task"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    patch:
+      tags: [Tareas]
+      summary: Actualizar una tarea (parcial)
+      description: Idéntico a `PUT` — ambos apuntan a `ProjectTaskController@update`.
+      operationId: tasksPatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                status:
+                  type: string
+                  enum: [pending, in_progress, completed]
+                  example: completed
+      responses:
+        "200":
+          description: Tarea actualizada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    $ref: "#/components/schemas/Task"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    delete:
+      tags: [Tareas]
+      summary: Eliminar una tarea
+      description: |
+        ⚠️ `ProjectTaskController::destroy(ProjectTask $projectTask)` recibe un modelo
+        por *route model binding*, pero la ruta declara `{task}` y el binding no coincide;
+        en la práctica devuelve 500. Revisar el controlador.
+      operationId: tasksDestroy
+      responses:
+        "200":
+          description: Tarea eliminada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    nullable: true
+                  message:
+                    type: string
+                    example: Task deleted successfully.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /projects/{project_id}/tasks/{task_id}/comments:
+    parameters:
+      - $ref: "#/components/parameters/ProjectIdPath"
+      - $ref: "#/components/parameters/TaskIdPath"
+    get:
+      tags: [Comentarios de tarea]
+      summary: Listar comentarios de la tarea
+      description: Ordenado por `created_at` descendente. Respuesta **sin** envelope `success`.
+      operationId: commentsIndex
+      responses:
+        "200":
+          description: Comentarios
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Comment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    post:
+      tags: [Comentarios de tarea]
+      summary: Crear comentario
+      operationId: commentsStore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [comment]
+              properties:
+                comment:
+                  type: string
+                  maxLength: 5000
+                  example: "Subido a staging, falta QA."
+      responses:
+        "200":
+          description: Comentario creado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Comment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /projects/{project_id}/tasks/{task_id}/comments/{comment_id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectIdPath"
+      - $ref: "#/components/parameters/TaskIdPath"
+      - name: comment_id
+        in: path
+        required: true
+        description: ID del comentario (ruta `{comment}`, con *route model binding*).
+        schema:
+          type: integer
+          example: 45
+    get:
+      tags: [Comentarios de tarea]
+      summary: Obtener un comentario
+      operationId: commentsShow
+      responses:
+        "200":
+          description: Comentario
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Comment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    put:
+      tags: [Comentarios de tarea]
+      summary: Editar un comentario
+      operationId: commentsUpdate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [comment]
+              properties:
+                comment:
+                  type: string
+                  maxLength: 5000
+      responses:
+        "200":
+          description: Comentario actualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Comment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    patch:
+      tags: [Comentarios de tarea]
+      summary: Editar un comentario (parcial)
+      description: Mismo handler que `PUT`.
+      operationId: commentsPatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [comment]
+              properties:
+                comment:
+                  type: string
+                  maxLength: 5000
+      responses:
+        "200":
+          description: Comentario actualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Comment"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    delete:
+      tags: [Comentarios de tarea]
+      summary: Eliminar un comentario
+      operationId: commentsDestroy
+      responses:
+        "204":
+          description: Eliminado (cuerpo vacío)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /projects/{project_id}/tasks/{task_id}/files:
+    parameters:
+      - $ref: "#/components/parameters/ProjectIdPath"
+      - $ref: "#/components/parameters/TaskIdPath"
+    get:
+      tags: [Archivos de tarea]
+      summary: Listar adjuntos de la tarea
+      operationId: filesIndex
+      responses:
+        "200":
+          description: Adjuntos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TaskFile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    post:
+      tags: [Archivos de tarea]
+      summary: Subir adjuntos
+      description: |
+        Acepta varios archivos con el campo `files[]` **o** uno sólo con `file`
+        (`required_without` cruzados). Máx. 20480 KB por archivo.
+        Se almacenan en `storage/app/public/projects/{project_id}/tasks/{task_id}/files/`
+        con nombre `slug-uniqid.ext`.
+      operationId: filesStore
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Archivo único (máx. 20 MB).
+                files:
+                  type: array
+                  description: Varios archivos (máx. 20 MB c/u). En `multipart` se envían como `files[]`.
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        "200":
+          description: Adjuntos creados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TaskFile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /projects/{project_id}/tasks/{task_id}/files/{file_id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectIdPath"
+      - $ref: "#/components/parameters/TaskIdPath"
+      - name: file_id
+        in: path
+        required: true
+        description: ID del adjunto (ruta `{file}`).
+        schema:
+          type: integer
+          example: 8
+    get:
+      tags: [Archivos de tarea]
+      summary: Obtener metadatos de un adjunto
+      operationId: filesShow
+      responses:
+        "200":
+          description: Adjunto
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/TaskFile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    delete:
+      tags: [Archivos de tarea]
+      summary: Eliminar un adjunto
+      description: Borra el archivo del disk `public` y el registro en BD.
+      operationId: filesDestroy
+      responses:
+        "204":
+          description: Eliminado
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /dashboard:
+    get:
+      tags: [Dashboard]
+      summary: Resumen del panel
+      description: |
+        Devuelve en una sola llamada todos los datasets de los widgets. El resultado se
+        cachea 60 s por `project_id` (`Cache::remember`), así que los cambios pueden tardar
+        hasta un minuto en reflejarse.
+      operationId: dashboardIndex
+      parameters:
+        - name: project_id
+          in: query
+          required: false
+          description: Si se indica, todas las métricas se acotan a ese proyecto.
+          schema:
+            type: integer
+            example: 1
+      responses:
+        "200":
+          description: Métricas
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                    example: Dashboard data
+                  data:
+                    $ref: "#/components/schemas/DashboardOverview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    post:
+      tags: [Sin implementar]
+      summary: "[no implementado] POST /dashboard"
+      description: |
+        `Route::apiResource('/dashboard', …)` declara la ruta, pero
+        `DashboardController` no define `store()`. Resultado esperado: error 500.
+      operationId: dashboardStore
+      responses:
+        "500":
+          description: Sin implementación
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /users:
+    get:
+      tags: [Usuarios]
+      summary: Listar usuarios
+      description: 'Respuesta de Api Resource → `{ "data": [...] }`, sin envelope `success`.'
+      operationId: usersIndex
+      responses:
+        "200":
+          description: Usuarios
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    post:
+      tags: [Usuarios]
+      summary: Crear usuario
+      description: |
+        Valida `photo` como imagen pero lee `$request->file('avatar')` (bug conocido: el
+        campo subido se ignora). `role` es obligatorio.
+      operationId: usersStore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, role, password]
+              properties:
+                name:
+                  type: string
+                  maxLength: 255
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  example: admin
+                password:
+                  type: string
+                  minLength: 6
+                photo:
+                  type: string
+                  format: binary
+                  description: jpeg, png, jpg, gif, webp — máx. 4096 KB (multipart/form-data)
+          multipart/form-data:
+            schema:
+              type: object
+              required: [name, email, role, password]
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                role:
+                  type: string
+                password:
+                  type: string
+                photo:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Usuario creado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /users/{user_id}:
+    parameters:
+      - name: user_id
+        in: path
+        required: true
+        description: ID del usuario (ruta `{user}`, con *route model binding*).
+        schema:
+          type: integer
+          example: 3
+    get:
+      tags: [Usuarios]
+      summary: Obtener un usuario
+      operationId: usersShow
+      responses:
+        "200":
+          description: Usuario
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    put:
+      tags: [Usuarios]
+      summary: Actualizar un usuario
+      description: |
+        Todos los campos son `sometimes`. Si se sube `avatar`, se guarda en
+        `storage/app/public/users/{id}/` y se escribe la columna `photo` vía query builder.
+      operationId: usersUpdate
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 255
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 6
+                avatar:
+                  type: string
+                  format: binary
+                  description: jpeg, png, jpg, gif, webp — máx. 4096 KB
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 255
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 6
+      responses:
+        "200":
+          description: Usuario actualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    patch:
+      tags: [Usuarios]
+      summary: Actualizar un usuario (parcial)
+      description: Mismo handler que `PUT`.
+      operationId: usersPatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 255
+      responses:
+        "200":
+          description: Usuario actualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    delete:
+      tags: [Usuarios]
+      summary: Eliminar un usuario
+      operationId: usersDestroy
+      responses:
+        "204":
+          description: Eliminado
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /posts:
+    get:
+      tags: [Posts]
+      summary: Listar posts del usuario autenticado
+      description: Devuelve modelos `Post` crudos (sin Api Resource).
+      operationId: postsIndex
+      responses:
+        "200":
+          description: Posts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Post"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    post:
+      tags: [Posts]
+      summary: Crear post
+      operationId: postsStore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, content]
+              properties:
+                title:
+                  type: string
+                  maxLength: 255
+                content:
+                  type: string
+      responses:
+        "201":
+          description: Post creado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+  /posts/{id}:
+    parameters:
+      - $ref: "#/components/parameters/IdPath"
+    get:
+      tags: [Posts]
+      summary: Obtener un post
+      description: |
+        Usa `Post::find()`: si el `id` no existe responde `200` con `data: null`
+        (no 404). Tampoco aplica `PostPolicy`.
+      operationId: postsShow
+      responses:
+        "200":
+          description: Post (o `null`)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                    example: Post
+                  data:
+                    nullable: true
+                    allOf:
+                      - $ref: "#/components/schemas/Post"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    put:
+      tags: [Sin implementar]
+      summary: "[no implementado] PUT /posts/{id}"
+      description: "`PostController::update()` valida pero nunca persiste ni retorna."
+      operationId: postsUpdate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  maxLength: 255
+                content:
+                  type: string
+      responses:
+        "200":
+          description: Respuesta vacía (sin cuerpo)
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        default:
+          $ref: "#/components/responses/Unexpected"
+    patch:
+      tags: [Sin implementar]
+      summary: "[no implementado] PATCH /posts/{id}"
+      description: Idéntico a `PUT`.
+      operationId: postsPatch
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+      responses:
+        "200":
+          description: Respuesta vacía (sin cuerpo)
+        default:
+          $ref: "#/components/responses/Unexpected"
+    delete:
+      tags: [Sin implementar]
+      summary: "[no implementado] DELETE /posts/{id}"
+      description: "`PostController::destroy()` está vacío."
+      operationId: postsDestroy
+      responses:
+        "200":
+          description: Respuesta vacía (sin cuerpo)
+        default:
+          $ref: "#/components/responses/Unexpected"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Token de Passport obtenido en `POST /api/login`
+        (`Authorization: Bearer {token}`). En Swagger UI pulsa **Authorize** y pega
+        el token directamente, sin el prefijo `Bearer`.
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: XSRF-TOKEN
+      description: >-
+        Alternativa para peticiones desde el navegador con la sesión web
+        (`XSRF-TOKEN` + `laravel_session`); no cubre el guard `api`.
+
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      description: Identificador numérico del recurso.
+      schema:
+        type: integer
+        example: 1
+    ProjectIdPath:
+      name: project_id
+      in: path
+      required: true
+      description: ID del proyecto padre.
+      schema:
+        type: integer
+        example: 1
+    TaskIdPath:
+      name: task_id
+      in: path
+      required: true
+      description: ID de la tarea padre.
+      schema:
+        type: integer
+        example: 12
+
+  responses:
+    Unauthorized:
+      description: Token ausente, inválido o expirado.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            message: Unauthenticated.
+    Forbidden:
+      description: El usuario no tiene permiso sobre el recurso (policy).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            message: This action is unauthorized.
+    NotFound:
+      description: Registro inexistente (`findOrFail` / `firstOrFail`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+          example:
+            message: No query results for model [App\Models\Project].
+    ValidationError:
+      description: Validación fallida (`$request->validate()`).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationException"
+          example:
+            message: "The name field is required."
+            errors:
+              name:
+                - "The name field is required."
+    Unexpected:
+      description: Error inesperado del servidor.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
+  schemas:
+    ApiError:
+      type: object
+      description: |
+        Formato de `BaseController::sendError()` o del handler global de excepciones de
+        Laravel para APIs (`message`).
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+        data:
+          type: object
+          nullable: true
+          description: Detalle opcional que `sendError()` mete en `data` cuando hay `$errorMessages`.
+      additionalProperties: true
+
+    ValidationException:
+      type: object
+      properties:
+        message:
+          type: string
+          example: The given data was invalid.
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+
+    User:
+      type: object
+      description: |
+        Modelo `App\Models\User`. `password` y `remember_token` quedan ocultos por
+        `$hidden`. Las columnas `role` y `photo` no aparecen en las migraciones
+        incluidas en el repo: comprueba tu BD local.
+      properties:
+        id:
+          type: integer
+          example: 3
+        name:
+          type: string
+          example: Ada Lovelace
+        email:
+          type: string
+          format: email
+          example: ada@example.com
+        role:
+          type: string
+          nullable: true
+          example: admin
+        photo:
+          type: string
+          nullable: true
+          description: URL absoluta del disk `public` (`{APP_URL}/storage/...`).
+          example: http://localhost:8000/storage/users/3/photo.jpg
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    UserBrief:
+      type: object
+      description: Proyección mínima de usuario que devuelven los resources de tarea/comentario.
+      properties:
+        id:
+          type: integer
+          example: 3
+        name:
+          type: string
+          example: Ada Lovelace
+        photo:
+          type: string
+          nullable: true
+          example: http://localhost:8000/storage/users/3/photo.jpg
+
+    Project:
+      type: object
+      description: Salida de `App\Http\Resources\ProjectResource`.
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Portal corporativo
+        description:
+          type: string
+          nullable: true
+          example: Rediseño del sitio público
+        client_name:
+          type: string
+          nullable: true
+          example: ACME S.L.
+        client_email:
+          type: string
+          nullable: true
+          example: cliente@acme.com
+        client_phone:
+          type: string
+          nullable: true
+          example: "+34 910 000 000"
+        start_date:
+          type: string
+          format: date-time
+          nullable: true
+        end_date:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        logo:
+          type: string
+          nullable: true
+          description: Sólo se devuelve si el archivo existe realmente en el disk `public`.
+          example: http://localhost:8000/storage/projects/1/logo.png
+
+    PublicProject:
+      type: object
+      description: Salida de `App\Http\Resources\PublicProjectResource`.
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Portal corporativo
+        logo:
+          type: string
+          nullable: true
+          example: http://localhost:8000/storage/projects/1/logo.png
+
+    Task:
+      type: object
+      description: |
+        Salida de `App\Http\Resources\ProjectTaskResource`. `order` se lee del modelo pero
+        no existe en la migración de `project_tasks` (devuelve `null`).
+      properties:
+        id:
+          type: integer
+          example: 12
+        title:
+          type: string
+          example: Maquetar home
+        description:
+          type: string
+          nullable: true
+        order:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          enum: [pending, in_progress, completed]
+          example: pending
+        priority:
+          type: string
+          nullable: true
+          example: medium
+        category:
+          type: string
+          nullable: true
+          example: frontend
+        user:
+          $ref: "#/components/schemas/UserBrief"
+        assigned_to:
+          allOf:
+            - $ref: "#/components/schemas/UserBrief"
+          nullable: true
+        tags:
+          type: string
+          nullable: true
+          example: ui,tailwind
+        estimated_hours:
+          type: number
+          format: float
+          nullable: true
+          example: 8
+        due_date:
+          type: string
+          format: date
+          nullable: true
+          example: "2026-11-30"
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    Comment:
+      type: object
+      description: Salida de `App\Http\Resources\ProjectTaskCommentResource`.
+      properties:
+        id:
+          type: integer
+          example: 45
+        project_task_id:
+          type: integer
+          example: 12
+        comment:
+          type: string
+          example: Subido a staging, falta QA.
+        created_by:
+          type: object
+          description: Autor (objeto inline, no un ID).
+          properties:
+            id:
+              type: integer
+              example: 3
+            name:
+              type: string
+              example: Ada Lovelace
+            photo:
+              type: string
+              nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    TaskFile:
+      type: object
+      description: Salida de `App\Http\Resources\ProjectTaskFileResource`.
+      properties:
+        id:
+          type: integer
+          example: 8
+        project_task_id:
+          type: integer
+          example: 12
+        file_name:
+          type: string
+          example: boceto-home-68f3c1d2e4a5b.png
+        file_type:
+          type: string
+          nullable: true
+          example: image/png
+        file_size:
+          type: integer
+          format: int64
+          nullable: true
+          description: Bytes.
+          example: 249088
+        file_path:
+          type: string
+          nullable: true
+          example: projects/1/tasks/12/files/boceto-home-68f3c1d2e4a5b.png
+        url:
+          type: string
+          nullable: true
+          example: http://localhost:8000/storage/projects/1/tasks/12/files/boceto-home-68f3c1d2e4a5b.png
+        user:
+          type: object
+          nullable: true
+          description: Modelo `User` completo del uploader (menos campos ocultos).
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    Lead:
+      type: object
+      description: Modelo `App\Models\Lead` (tabla `leads`).
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Grace Hopper
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          nullable: true
+        message:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    Post:
+      type: object
+      description: Modelo `App\Models\Post` crudo (sin Api Resource).
+      properties:
+        id:
+          type: integer
+          example: 5
+        user_id:
+          type: integer
+          example: 3
+        title:
+          type: string
+          example: Hola mundo
+        content:
+          type: string
+          example: Primer post del equipo.
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    DashboardOverview:
+      type: object
+      properties:
+        summary:
+          type: object
+          properties:
+            total_projects:
+              type: integer
+            total_tasks:
+              type: integer
+            completed_tasks:
+              type: integer
+            in_progress:
+              type: integer
+            pending:
+              type: integer
+            overdue_tasks:
+              type: integer
+              description: Tareas `pending`/`in_progress` con `due_date` en el pasado.
+            avg_completion_hours:
+              type: number
+              format: float
+              nullable: true
+              description: Media (h, 2 decimales) entre `created_at` y `completed_at`.
+            on_time_rate:
+              type: number
+              format: float
+              nullable: true
+              description: "% de tareas cerradas antes o a tiempo del due_date."
+        tasks_by_status:
+          type: object
+          description: Mapa `status => total` (los estados sin tareas no aparecen).
+          additionalProperties:
+            type: integer
+          example:
+            pending: 4
+            in_progress: 2
+            completed: 11
+        tasks_per_user:
+          type: object
+          description: >-
+            Api Resource collection → envuelto en `data`. Top 10 usuarios por tareas
+            completadas.
+          properties:
+            data:
+              type: array
+              items:
+                $ref: "#/components/schemas/TaskPerUser"
+        completed_on_time_vs_late:
+          type: object
+          properties:
+            on_time:
+              type: integer
+            late:
+              type: integer
+        projects:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectProgress"
+        recent_tasks:
+          type: array
+          description: Últimas 20 tareas por `updated_at`.
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              project_id:
+                type: integer
+              title:
+                type: string
+              status:
+                type: string
+                enum: [pending, in_progress, completed]
+              assigned_to:
+                type: integer
+                nullable: true
+              created_at:
+                type: string
+                format: date-time
+                nullable: true
+              completed_at:
+                type: string
+                format: date-time
+                nullable: true
+
+    TaskPerUser:
+      type: object
+      description: Salida de `App\Http\Resources\TaskPerUserResource`.
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        photo:
+          type: string
+          nullable: true
+          description: Construida con `asset('storage/...')`.
+        total_completed:
+          type: integer
+        on_time:
+          type: integer
+        late:
+          type: integer
+        on_time_rate:
+          type: number
+          format: float
+          nullable: true
+          description: Porcentaje 0-100.
+
+    ProjectProgress:
+      type: object
+      description: Progreso por proyecto calculado en `DashboardController::index()`.
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        total_tasks:
+          type: integer
+        completed_tasks:
+          type: integer
+        overdue_tasks:
+          type: integer
+        percent_complete:
+          type: number
+          format: float
+          example: 42.86
+        status:
+          type: string
+          enum: [on_track, at_risk, overdue]
+          description: >-
+            `overdue` si hay tareas vencidas; `at_risk` si el progreso es < 80 % y hay
+            vencimientos en los próximos 7 días; `on_track` en otro caso.
+
+    SeriesLabelsData:
+      type: object
+      description: >-
+        Estructura de los endpoints auxiliares del dashboard
+        (`tasksCompletedByDay`, `avgCompletionByProject`), que **no** están enrutados.
+      properties:
+        labels:
+          type: array
+          items:
+            type: string
+            format: date
+        data:
+          type: array
+          items:
+            type: integer
