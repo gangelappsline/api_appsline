@@ -80,10 +80,12 @@ class UserController extends BaseController
         return new UserResource($user);
     }
 
-    public function updateAvatar(Request $request, User $user){
+    public function updateAvatar(Request $request, int $id){
         $validated = $request->validate([
             'avatar' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:4096',
         ]);
+
+        $user = User::findOrFail($id);        
 
         if ($request->hasFile('avatar')) {
             $file = $request->file('avatar');
