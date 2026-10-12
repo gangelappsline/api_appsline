@@ -13,8 +13,13 @@ Route::post('/register', [Controllers\API\AuthController::class, 'register']);
 Route::post('/login', [Controllers\API\AuthController::class, 'login']);
 
 Route::prefix('/public')->group(function () {
-    Route::apiResource('/projects', Controllers\API\Public\ProjectController::class);
-    Route::apiResource('/leads', Controllers\API\Public\LeadController::class);
+    // Nombres propios (public.*) para no chocar con los recursos autenticados de abajo:
+    // dos rutas con el mismo nombre rompen `php artisan route:cache` y `php artisan optimize`
+    // (LogicException: Another route has already been assigned name [projects.index]).
+    Route::apiResource('/projects', Controllers\API\Public\ProjectController::class)
+        ->names('public.projects');
+    Route::apiResource('/leads', Controllers\API\Public\LeadController::class)
+        ->names('public.leads');
 });
 
 Route::middleware('auth:api')->group(function () {
@@ -52,6 +57,6 @@ Route::middleware('auth:api')->group(function () {
     // Nuevo recurso de archivos de tareas
     Route::apiResource('/projects/{project_id}/tasks/{task_id}/files', Controllers\API\ProjectTaskFileController::class);
 
-    Route::apiResource('/users', Controllers\API\UserController::class);
+    // `/users` ya está declarado arriba; declararlo dos veces duplica los nombres de ruta.
     Route::post('/logout', [Controllers\API\AuthController::class, 'logout']);
 });

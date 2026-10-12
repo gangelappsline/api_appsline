@@ -65,12 +65,40 @@ en `.env`; por defecto se habilita en `local`, `development`, `testing` y `stagi
 pero no en producción. La misma regla protege la UI y el JSON OpenAPI. Si cambias
 variables de entorno con la configuración cacheada, ejecuta
 `php artisan config:clear`.
-Para habilitarla en producción, configura explícitamente `DOCS_ENVIRONMENTS=production`.
+Para habilitarla en producción, configura explícitamente `DOCS_ENVIRONMENTS=production`
+o `DOCS_ENVIRONMENTS=*` (cualquier entorno).
+
+> Scramble publica por defecto en `/docs/api` y `/docs/api.json`. Este proyecto los
+> remapea a `/docs` y `/docs/openapi.json` desde
+> [`app/Providers/AppServiceProvider.php`](app/Providers/AppServiceProvider.php),
+> así que esas son las únicas URLs válidas aquí.
 
 La especificación se actualiza al modificar las rutas, reglas de validación,
 controladores o recursos. Usa descripciones PHPDoc en los controladores para
 explicar el propósito y comportamiento que no se puede inferir del código. Las
 notas de comportamiento y limitaciones actuales están en [docs/API.md](docs/API.md).
+
+### Si `/docs` "no da resultados"
+
+Ejecuta primero el diagnóstico, que revisa paquete, rutas, permisos, cachés y genera
+el documento de verdad:
+
+```bash
+php artisan docs:check            # informe con el comando que arregla cada fallo
+php artisan docs:check --json     # para CI
+php artisan docs:check --skip-generation
+```
+
+| Síntoma | Causa habitual | Arreglo |
+|---|---|---|
+| 404 en `/docs` y `/docs/openapi.json` | `DOCS_ENABLED=false`, o `APP_ENV` fuera de `DOCS_ENVIRONMENTS` (p. ej. `production`) | Ajusta `.env` y `php artisan config:clear`. El motivo exacto queda en `storage/logs/laravel.log` y, con `APP_DEBUG=true`, también en el cuerpo de la respuesta 404 |
+| 404 aunque `.env` esté bien | `bootstrap/cache/config.php` cacheado antes de añadir `config/docs.php` | `php artisan optimize:clear` (o `config:clear`) |
+| 404 en `/docs/api` | Es la URL por defecto de Scramble; aquí está remapeada | Usa `/docs` |
+| Página en blanco (HTML llega, no se pinta) | La UI carga Stoplight Elements desde `unpkg.com`; sin salida a internet no hay JS/CSS | Da salida al CDN o publica la vista `scramble::docs` y sirve los assets en local |
+| `php artisan optimize` o `route:cache` revienta con *Another route has already been assigned name* | Dos rutas con el mismo nombre (antes pasaba con `/api/projects` y `/api/public/projects`) | Ya corregido con `->names('public.projects')` y `->names('public.leads')`; si añades recursos, dales nombres únicos |
+| 500 al abrir `/docs` | Scramble relanza cualquier error de análisis de una ruta concreta | Con `APP_DEBUG=true` la respuesta y el log indican la ruta; localízala con `php artisan scramble:analyze` |
+| El documento existe pero está vacío | `scramble.api_path` no coincide con el prefijo real de `routes/api.php` | Revisa `api_path` en `config/scramble.php` |
+| El documento no refleja los últimos cambios | Documento cacheado con `scramble:cache` | `php artisan scramble:clear` |
 
 ## Autenticación de la API
 
@@ -87,6 +115,7 @@ notas de comportamiento y limitaciones actuales están en [docs/API.md](docs/API
 composer test
 ./vendor/bin/pint --test
 php artisan route:list --path=api
+php artisan docs:check
 php artisan scramble:analyze
 ```
 
