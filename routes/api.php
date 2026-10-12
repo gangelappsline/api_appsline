@@ -18,6 +18,7 @@ Route::prefix('/public')->group(function () {
 });
 
 Route::middleware('auth:api')->group(function () {
+    Route::put('/users/{id}/avatar', [Controllers\API\UserController::class, 'updateAvatar']);
     Route::apiResource('/users', Controllers\API\UserController::class);
     Route::apiResource('/posts', Controllers\API\PostController::class);
     Route::apiResource('/dashboard', Controllers\API\DashboardController::class);

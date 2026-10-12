@@ -80,6 +80,25 @@ class UserController extends BaseController
         return new UserResource($user);
     }
 
+    public function updateAvatar(Request $request, User $user){
+        $validated = $request->validate([
+            'avatar' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:4096',
+        ]);
+
+        if ($request->hasFile('avatar')) {
+            $file = $request->file('avatar');
+            $path = "users/{$user->id}";
+            if (!Storage::disk('public')->exists($path)) {
+                Storage::disk('public')->makeDirectory($path);
+            }
+            $name = str_replace([" ", "/", "@"], '_', $file->getClientOriginalName()) . "." . $file->getClientOriginalExtension();
+            Storage::disk('public')->putFileAs($path, $file, $name);
+            DB::table('users')->where('id', $user->id)->update(['photo' => $path . '/' . $name]);
+        }
+
+        return new UserResource($user);
+    }
+
     public function destroy(User $user)
     {
         $user->delete();
