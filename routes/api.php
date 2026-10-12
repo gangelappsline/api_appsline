@@ -48,6 +48,7 @@ Route::middleware('auth:api')->group(function () {
 
     // Nuevo recurso de comentarios de tareas
     Route::apiResource('/projects/{project_id}/tasks/{task_id}/comments', Controllers\API\ProjectTaskCommentController::class);
+    Route::apiResource('/projects/{project_id}/tasks/{task_id}/subtasks', Controllers\API\ProjectTaskSubtaskController::class);
 
     // Nuevo recurso de archivos de tareas
     Route::apiResource('/projects/{project_id}/tasks/{task_id}/files', Controllers\API\ProjectTaskFileController::class);

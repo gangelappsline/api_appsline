@@ -10,7 +10,7 @@ class ProjectTaskFile extends Model
     use HasFactory;
 
     protected $fillable = [
-        'project_task_id',
+        'task_id',
         'file_name',
         'file_path',
         'file_size',
@@ -21,7 +21,7 @@ class ProjectTaskFile extends Model
 
     public function task()
     {
-        return $this->belongsTo(ProjectTask::class, 'project_task_id');
+        return $this->belongsTo(ProjectTask::class, 'task_id');
     }
 
     public function uploader()

@@ -10,13 +10,14 @@ use App\Http\Resources\ProjectTaskResource;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\TaskAssigned;
 use App\Models\User;
+use App\Models\ProjectTaskComment;
 use Carbon\Carbon;
 
 class ProjectTaskController extends BaseController
 {
     public function index($id)
     {
-        $tasks = ProjectTask::where('project_id', $id)->get();
+        $tasks = ProjectTask::where('project_id', $id)->where('task_id', NULL)->get();
         return $this->sendResponse(["tasks"=>ProjectTaskResource::collection($tasks)], "Tasks");
     }
 
@@ -105,6 +106,17 @@ class ProjectTaskController extends BaseController
 
             $validated['actual_hours'] = $hours;
             $validated['completed_at'] = $now->toDateTimeString();
+        }
+
+        if($request->has('subtasks')) {
+            // Manejar la lógica para subtareas aquí
+            foreach ($request->input('subtasks') as $key => $subtask) {
+                $st = ProjectTaskComment::create([
+                    'task_id' => $projectTask->id,
+                    'comment' => $subtask['title'] ?? '',
+                    'created_by' => $subtask['created_by'] ?? $request->user()->id(),
+                ]);
+            }
         }
 
         $projectTask->update($validated);

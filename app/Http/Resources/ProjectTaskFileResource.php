@@ -11,7 +11,7 @@ class ProjectTaskFileResource extends JsonResource
     {
         return [
             'id'              => $this->id,
-            'project_task_id' => $this->project_task_id,
+            'task_id' => $this->task_id,
             'file_name'       => $this->file_name,
             'file_type'       => $this->file_type,
             'file_size'      => $this->file_size,

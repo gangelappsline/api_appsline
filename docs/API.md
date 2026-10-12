@@ -219,7 +219,7 @@ Cosas que la documentación no puede arreglar pero que conviene tener por escrit
    no coincide con el parámetro `{task}` de la ruta.
 4. **Columnas usadas por los resources que no están en las migraciones:** `users.role`,
    `users.photo`, `projects.logo`, `projects.client_email`, `projects.client_phone`,
-   `project_tasks.order`, y los nombres `project_task_comments.project_task_id` /
+   `project_tasks.order`, y los nombres `project_task_comments.task_id` /
    `created_by` (las migraciones crean `task_id` / `user_id`). O faltan migraciones en el repo
    o hay que alinear los resources.
 5. **`apiResource` sobre `dashboard`** publica verbos que el controlador no implementa.

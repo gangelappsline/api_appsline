@@ -10,18 +10,18 @@ class ProjectTaskComment extends Model
     use HasFactory;
 
     protected $fillable = [
-        'project_task_id',
+        'task_id',
         'comment',
-        'created_by',
+        'user_id',
     ];
 
     public function task()
     {
-        return $this->belongsTo(ProjectTask::class, 'project_task_id');
+        return $this->belongsTo(ProjectTask::class, 'task_id');
     }
 
     public function author()
     {
-        return $this->belongsTo(User::class, 'created_by');
+        return $this->belongsTo(User::class, 'user_id');
     }
 }

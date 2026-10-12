@@ -36,9 +36,14 @@ class ProjectTask extends Model
         return $this->belongsTo(User::class,  "assigned_to", "id");
     }
 
+    public function subtasks()
+    {
+        return $this->hasMany(ProjectTask::class, 'task_id');
+    }
+
     public function comments()
     {
-        return $this->hasMany(ProjectTaskComment::class)->latest();
+        return $this->hasMany(ProjectTaskComment::class,'task_id')->latest();
     }
 
     public function files()

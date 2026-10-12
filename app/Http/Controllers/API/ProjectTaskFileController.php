@@ -14,7 +14,7 @@ class ProjectTaskFileController extends BaseController
     // GET /projects/{project_id}/tasks/{task_id}/files
     public function index($project_id, $task_id)
     {
-        $files = ProjectTaskFile::where('project_task_id', $task_id)
+        $files = ProjectTaskFile::where('task_id', $task_id)
             ->latest()
             ->get();
 
@@ -50,7 +50,7 @@ class ProjectTaskFileController extends BaseController
             Storage::disk('public')->putFileAs($dir, $uploaded, $name);
 
             $file = ProjectTaskFile::create([
-                'project_task_id' => $task_id,
+                'task_id' => $task_id,
                 'file_name'       => $name,
                 'file_path'       => "{$dir}/{$name}",
                 'file_size'       => $uploaded->getSize(),
@@ -75,7 +75,7 @@ class ProjectTaskFileController extends BaseController
     public function destroy($project_id, $task_id, $id)
     {
         $file = ProjectTaskFile::findOrFail($id);
-        abort_if($file->project_task_id != $task_id, 404);
+        abort_if($file->task_id != $task_id, 404);
 
         if ($file->file_path) {
             Storage::disk('public')->delete($file->file_path);

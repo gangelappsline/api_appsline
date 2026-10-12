@@ -27,6 +27,7 @@ class ProjectTaskResource extends JsonResource
                 'name' => $this->assignedTo->name,
                 'photo' => $this->assignedTo->photo == NULL ? null : (Storage::disk('public')->exists($this->assignedTo->photo) ? Storage::disk('public')->url($this->assignedTo->photo) : null),
             ] : null,
+            'subtasks' => ProjectTaskResource::collection($this->subtasks),
             'tags'=> $this->tags,
             'estimated_hours' => $this->estimated_hours,
             'due_date' => $this->due_date,

@@ -11,7 +11,7 @@ class ProjectTaskCommentResource extends JsonResource
     {
         return [
             'id'               => $this->id,
-            'project_task_id'  => $this->project_task_id,
+            'task_id'  => $this->task_id,
             'comment'          => $this->comment,
             'created_by'       => [
                 'id'    => $this->author->id,
