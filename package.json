@@ -4,7 +4,9 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "docs:vendor": "npm i --no-save swagger-ui-dist && mkdir -p public/vendor/swagger-ui && cp node_modules/swagger-ui-dist/swagger-ui.css node_modules/swagger-ui-dist/swagger-ui-bundle.js node_modules/swagger-ui-dist/swagger-ui-standalone-preset.js public/vendor/swagger-ui/",
+        "docs:check": "php artisan docs:generate --check"
     },
     "devDependencies": {
         "@popperjs/core": "^2.11.6",
