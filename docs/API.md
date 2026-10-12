@@ -31,7 +31,7 @@ actualizada desde las rutas y controladores está en <http://localhost:8000/docs
 |---|---|---|---|
 | GET | `/api/public/projects` | `Public\ProjectController@index` | ✔ |
 | POST · GET · PUT/PATCH · DELETE | `/api/public/projects`, `/api/public/projects/{project}` | `Public\ProjectController` | ✖ |
-| POST | `/api/public/leads` | `Public\LeadController@store` | ⚠ `Lead` no declara `$fillable` → 500 |
+| POST | `/api/public/leads` | `Public\LeadController@store` | ✔ crea el lead (200; `sendResponse()` ignora el 201 que se le pasa) |
 | GET · PUT/PATCH · DELETE | `/api/public/leads`, `/api/public/leads/{lead}` | `Public\LeadController` | ✖ |
 
 ### Proyectos
@@ -99,9 +99,11 @@ Route::get('/dashboard/avg-by-project', [DashboardController::class, 'avgComplet
 | GET | `/api/posts/{id}` | `PostController@show` | ⚠ `find()`: 200 con `data: null` si no existe |
 | PUT · PATCH · DELETE | `/api/posts/{id}` | `PostController@update` / `@destroy` | ✖ |
 
-> `Route::apiResource('/users', …)` está declarado **dos veces** en `routes/api.php`
-> (líneas 21 y 55). Es inocuo —la segunda declaración sobrescribe los nombres de ruta—
-> pero genera ruido en `php artisan route:list`.
+> Los recursos de `/api/public` usan nombres propios (`public.projects.*`, `public.leads.*`).
+> Antes compartían nombre con los recursos autenticados (`projects.index`, …) y eso hacía
+> fallar `php artisan route:cache` / `php artisan optimize` con
+> *Another route has already been assigned name [projects.index]*; también estaba duplicado
+> `Route::apiResource('/users', …)`. `php artisan docs:check` detecta ambos problemas.
 
 ---
 
@@ -181,7 +183,7 @@ curl -s "$BASE/dashboard?project_id=$PROJECT" "${H[@]}" | jq '.data.summary'
 | 403 | `authorize()` en una policy (proyectos) |
 | 404 | `findOrFail` / `firstOrFail` / `abort_if` en la verificación de padre |
 | 422 | `$request->validate()` → `{ "message": "…", "errors": { "campo": ["…"] } }` |
-| 500 | `POST /api/public/leads` (mass assignment), `DELETE` de tareas (route binding roto) |
+| 500 | `DELETE` de tareas (route binding roto) |
 
 ---
 
@@ -213,8 +215,11 @@ Cosas que la documentación no puede arreglar pero que conviene tener por escrit
    `createToken('api-token')->plainTextToken` (API de **Sanctum**). Ese token no autentica
    contra `auth:api`, así que sólo el `login` (Passport) es utilitable. Decide un proveedor y
    alinea `register` + `composer.json` (hoy Sanctum y Passport conviven).
-2. **`POST /api/public/leads` roto.** `App\Models\Lead` (y `Post`) no declaran `$fillable` con
-   `$request->all()` → `MassAssignmentException`.
+2. **`POST /api/public/leads` arreglado.** `App\Models\Lead` ya declara `$fillable` y existe la
+   migración `2026_10_12_000000_create_leads_table.php` (antes no había tabla `leads`: Scramble
+   avisaba `MD001 table leads does not exist` y el endpoint reventaba). `Post` sigue sin
+   `$fillable`, así que `POST /api/posts` aún lanza `MassAssignmentException`.
+   Si tu base de datos ya tenía `leads` creada a mano, la migración la detecta y no la toca.
 3. **`DELETE /api/projects/{p}/tasks/{t}` roto.** `ProjectTaskController::destroy(ProjectTask $projectTask)`
    no coincide con el parámetro `{task}` de la ruta.
 4. **Columnas usadas por los resources que no están en las migraciones:** `users.role`,
