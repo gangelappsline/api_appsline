@@ -1,7 +1,7 @@
-# API Appsline · Referencia de endpoints
+# API Appsline · Notas de endpoints
 
-Documento de apoyo a la especificación OpenAPI ([`openapi/openapi.yaml`](../openapi/openapi.yaml)),
-que es la fuente de verdad que pinta <http://localhost:8000/docs>.
+Notas complementarias sobre rutas, reglas de negocio y problemas conocidos. La referencia OpenAPI
+actualizada desde las rutas y controladores está en <http://localhost:8000/docs>.
 
 - **Base URL local:** `http://localhost:8000/api`
 - **Formato:** JSON en request y response, salvo adjuntos (`multipart/form-data`).
@@ -125,8 +125,7 @@ curl -s "$BASE/projects" -H "Authorization: Bearer $TOKEN" -H 'Accept: applicati
 curl -s -X POST "$BASE/logout" -H "Authorization: Bearer $TOKEN" -H 'Accept: application/json'
 ```
 
-En Swagger UI: **Authorize → pegar `data.token`** (sin el prefijo `Bearer`). El campo se
-persiste en `localStorage`, así que sobrevive a recargas.
+En la referencia de Scramble, autoriza las peticiones con el token `data.token` de Passport.
 
 ---
 

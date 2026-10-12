@@ -44,7 +44,7 @@ class ProjectController extends BaseController
         );
     }
 
-    public function show($id)
+    public function show(int $id)
     {
         $project = Project::findOrFail($id);
         
@@ -54,7 +54,7 @@ class ProjectController extends BaseController
         );
     }
 
-    public function update(Request $request, $id)
+    public function update(Request $request, int $id)
     {
         //$this->authorize('update', $project);
 
@@ -72,8 +72,9 @@ class ProjectController extends BaseController
         );
     }
 
-    public function destroy(Project $project)
+    public function destroy(int $id)
     {
+        $project = Project::findOrFail($id);
         $this->authorize('delete', $project);
         $project->delete();
         return response()->noContent();
