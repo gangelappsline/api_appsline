@@ -1,0 +1,115 @@
+/* =========================================================
+   appsline · theme de email
+   public/themes/appsline.css
+   Mobile-first: base 600px + media query <= 620px
+   ========================================================= */
+
+body {
+  margin: 0;
+  padding: 0;
+  width: 100% !important;
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+  background-color: #F4F7FB;
+}
+
+table { border-collapse: collapse !important; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+img { border: 0; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
+a { text-decoration: none; }
+
+/* --- Tipografía --- */
+.h1 { font-size: 27px; line-height: 35px; font-weight: 700; color: #14181D; letter-spacing: -.6px; }
+.h2 { font-size: 19px; line-height: 27px; font-weight: 700; color: #14181D; }
+.p  { font-size: 16px; line-height: 26px; color: #4A5568; margin: 0 0 16px 0; }
+.small { font-size: 13px; line-height: 21px; color: #8A94A6; }
+.link { color: #0B47C4; font-weight: 600; }
+
+/* --- Bloques --- */
+.card   { background-color: #FFFFFF; border-radius: 18px; overflow: hidden;
+          box-shadow: 0 1px 2px rgba(10,23,51,.06), 0 12px 28px rgba(10,23,51,.06); }
+.panel  { background-color: #F4F7FB; border: 1px solid #E6ECF5; border-radius: 14px; }
+.panel-accent { background-color: #EEF4FF; border: 1px solid #C9DBFB; border-radius: 14px; }
+.divider { border-top: 1px solid #EDF1F7; }
+.stat    { background-color: #F4F7FB; border-radius: 14px; }
+
+/* --- Botón --- */
+.btn a {
+  display: inline-block;
+  background-color: #0B47C4;
+  background-image: linear-gradient(135deg, #1266E8 0%, #0B47C4 60%, #083AA0 100%);
+  border-radius: 12px;
+  color: #FFFFFF !important;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: .1px;
+  padding: 15px 30px;
+  text-align: center;
+  text-decoration: none;
+}
+.btn-ghost a { background-image: none; background-color: #FFFFFF; border: 1px solid #C9DBFB; color: #0B47C4 !important; }
+
+/* --- Etiqueta / badge --- */
+.badge {
+  display: inline-block;
+  background-color: #EEF4FF;
+  border: 1px solid #C9DBFB;
+  border-radius: 999px;
+  color: #0B47C4;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  padding: 6px 14px;
+}
+
+/* --- Tabla de datos (facturas, resúmenes) --- */
+.data-table th {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .8px;
+  color: #8A94A6; font-weight: 700; text-align: left; padding: 0 0 10px 0;
+  border-bottom: 1px solid #E6ECF5;
+}
+.data-table td { font-size: 15px; line-height: 24px; color: #4A5568; padding: 12px 0; border-bottom: 1px solid #EDF1F7; }
+.data-table .right { text-align: right; }
+
+/* --- Redes sociales del footer --- */
+.social a {
+  display: inline-block; width: 34px; height: 34px; line-height: 34px;
+  border-radius: 999px; background-color: #16294F; color: #FFFFFF !important;
+  font-size: 13px; font-weight: 700; text-align: center; text-decoration: none;
+}
+
+/* =========================================================
+   RESPONSIVO  (clientes con soporte de media queries)
+   ========================================================= */
+@media only screen and (max-width: 620px) {
+
+  .wrapper { width: 100% !important; max-width: 100% !important; }
+  .card { border-radius: 0 !important; box-shadow: none !important; }
+  .outer { padding: 0 !important; }
+
+  .px  { padding-left: 24px !important; padding-right: 24px !important; }
+  .py  { padding-top: 28px !important; padding-bottom: 28px !important; }
+
+  .h1 { font-size: 22px !important; line-height: 29px !important; }
+  .h2 { font-size: 17px !important; line-height: 25px !important; }
+  .p  { font-size: 15px !important; line-height: 24px !important; }
+
+  .btn a, .btn-ghost a {
+    display: block !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Columnas que se apilan */
+  .stack { display: block !important; width: 100% !important; max-width: 100% !important;
+           padding: 0 0 12px 0 !important; box-sizing: border-box !important; }
+  .stack-last { padding-bottom: 0 !important; }
+
+  .hide-sm { display: none !important; }
+  .logo img { width: 96px !important; height: auto !important; }
+
+  .footer-links a { display: block !important; margin: 6px 0 !important; }
+}
+
+/* Outlook.com / Windows Mail: quita el padding extra en imágenes */
+[owa] .px { padding-left: 24px; padding-right: 24px; }

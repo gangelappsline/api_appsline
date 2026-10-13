@@ -4,13 +4,14 @@ namespace App\Http\Controllers\API;
 
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends BaseController
 {
-     public function register(Request $request)
+    public function register(Request $request)
     {
         $request->validate([
             'name' => 'required|string|max:255',
@@ -42,18 +43,18 @@ class AuthController extends BaseController
             return response()->json($validator->errors(), 422);
         }
 
-        $user = User::where('email',  $request->email) ->first();
+        $user = User::where('email',  $request->email)->first();
         if ($user) {
             if (Hash::check($request->password, $user->password)) {
-                    $success['token'] =  $user->createToken('LaravelAuthApp')->accessToken;
-                    $success['user'] =  $user;
+                $user->photo = Storage::disk('public')->url($user->photo);
+                $success['token'] =  $user->createToken('LaravelAuthApp')->accessToken;
+                $success['user'] =  $user;
 
-                    return $this->sendResponse($success, 'User login successfully.');
-                } else {
+                return $this->sendResponse($success, 'User login successfully.');
+            } else {
 
-                    return $this->sendError('Unauthorised.', ['error' => 'Unauthorised'], 401);
-                }
-
+                return $this->sendError('Unauthorised.', ['error' => 'Unauthorised'], 401);
+            }
         } else {
 
             return $this->sendError('Unauthorised.', ['error' => 'Unauthorised']);

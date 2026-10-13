@@ -31,7 +31,7 @@ Route::middleware('auth:api')->group(function () {
     Route::apiResource('/projects', Controllers\API\ProjectController::class);
     Route::post('/projects/{id}/logo', function(Request $request, $id){
        $validated = $request->validate([
-           'logo' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
+           'logo' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:2048',
        ]);
 
        $project = Project::findOrFail($id);
@@ -57,6 +57,11 @@ Route::middleware('auth:api')->group(function () {
 
     // Nuevo recurso de archivos de tareas
     Route::apiResource('/projects/{project_id}/tasks/{task_id}/files', Controllers\API\ProjectTaskFileController::class);
+    Route::get('clients/options', [Controllers\API\ClientController::class, 'options']);
+    Route::patch('clients/{client}/status', [Controllers\API\ClientController::class, 'updateStatus']);
+    Route::post('clients/{id}/restore', [Controllers\API\ClientController::class, 'restore']);
+
+    Route::apiResource('clients', Controllers\API\ClientController::class);
 
     // `/users` ya está declarado arriba; declararlo dos veces duplica los nombres de ruta.
     Route::post('/logout', [Controllers\API\AuthController::class, 'logout']);
