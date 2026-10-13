@@ -2,15 +2,11 @@
 
 namespace App\Http\Controllers\API;
 
-use App\Http\Controllers\Controller;
 use App\Models\ProjectTask;
-use Illuminate\Console\View\Components\Task;
 use Illuminate\Http\Request;
 use App\Http\Resources\ProjectTaskResource;
-use Illuminate\Support\Facades\Mail;
-use App\Mail\TaskAssigned;
-use App\Models\User;
 use App\Models\ProjectTaskComment;
+use App\Services\TaskNotificationService;
 use Carbon\Carbon;
 
 class ProjectTaskController extends BaseController
@@ -21,7 +17,7 @@ class ProjectTaskController extends BaseController
         return $this->sendResponse(["tasks"=>ProjectTaskResource::collection($tasks)], "Tasks");
     }
 
-    public function store(Request $request, $id)
+    public function store(Request $request, $id, TaskNotificationService $notifications)
     {
         $validated = $request->validate([
             'title' => 'required|string|max:255',
@@ -39,10 +35,10 @@ class ProjectTaskController extends BaseController
         $task = new ProjectTask();
         $task->project_id = $id;
         $task->title = $validated['title'];
-        $task->description = $validated['description'];
+        $task->description = $validated['description'] ?? null;
         $task->status = 'pending';
-        $task->due_date = $validated['due_date'];
-        $task->assigned_to = $validated['assigned_to'];
+        $task->due_date = $validated['due_date'] ?? null;
+        $task->assigned_to = $validated['assigned_to'] ?? null;
         $task->estimated_hours = $validated['estimated_hours'] ?? null;
         $task->actual_hours = $validated['actual_hours'] ?? null;
         $task->priority = $validated['priority'] ?? null;
@@ -51,19 +47,8 @@ class ProjectTaskController extends BaseController
         $task->created_by = auth()->id();
         $task->save();
 
-        // enviar correo si la tarea fue asignada a un usuario
-        if ($task->assigned_to) {
-            $assignee = User::find($task->assigned_to);
-            if ($assignee && $assignee->email) {
-                $meta = [
-                    'assigneeName' => $assignee->name,
-                    'assignerName' => auth()->user()?->name,
-                    'taskUrl' => url("/projects/{$task->project_id}/tasks/{$task->id}"),
-                ];
-                // usa queue() si tienes colas; de lo contrario cambia a send()
-                Mail::to($assignee->email)->queue(new TaskAssigned($task, $meta));
-            }
-        }
+        // Correo al responsable con toda la descripción de la tarea.
+        $notifications->notifyTaskAssigned($task, auth()->user());
 
         return $this->sendResponse(new ProjectTaskResource($task), "Task created successfully.");
     }
@@ -74,9 +59,11 @@ class ProjectTaskController extends BaseController
         return $this->sendResponse(new ProjectTaskResource($projectTask), "Task retrieved successfully.");
     }
 
-    public function update(Request $request, $project_id, $id)
+    public function update(Request $request, $project_id, $id, TaskNotificationService $notifications)
     {
         $projectTask = ProjectTask::where('id', $id)->where('project_id', $project_id)->firstOrFail();
+
+        $previousAssigneeId = $projectTask->assigned_to;
 
         $validated = $request->validate([
             'project_id' => 'sometimes|integer|exists:projects,id',
