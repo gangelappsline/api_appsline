@@ -2,39 +2,42 @@
 
 namespace App\Mail;
 
+use App\Models\ProjectTask;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
-use App\Models\ProjectTask;
 
+/**
+ * Correo que recibe la persona a la que se le asigna una tarea,
+ * al crearla o al reasignarla, con toda la descripción de la misma.
+ *
+ * La vista usa el layout único: resources/views/emails/layouts/master.blade.php
+ */
 class TaskAssigned extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
-    public ProjectTask $task;
-    public array $meta;
-
     /**
-     * Create a new message instance.
+     * @param  ProjectTask  $task  Tarea asignada (se recarga desde la BD al procesar la cola).
+     * @param  string|null  $assignerName  Nombre de quien asigna (por defecto, el creador).
+     * @param  bool  $reassigned  True cuando la tarea cambió de responsable.
      */
-    public function __construct(ProjectTask $task, array $meta = [])
-    {
-        $this->task = $task;
-        $this->meta = $meta;
-    }
+    public function __construct(
+        public ProjectTask $task,
+        public ?string $assignerName = null,
+        public bool $reassigned = false,
+    ) {}
 
     /**
      * Get the message envelope.
      */
     public function envelope(): Envelope
     {
-        $subject = $this->meta['subject'] ?? ("Tarea asignada: {$this->task->title}");
-
         return new Envelope(
-            subject: $subject,
+            subject: $this->subjectLine(),
         );
     }
 
@@ -43,29 +46,21 @@ class TaskAssigned extends Mailable implements ShouldQueue
      */
     public function content(): Content
     {
-        $project = $this->task->project ?? null;
-        $projectLogo = null;
-        if ($project && !empty($project->logo)) {
-            $projectLogo = asset('storage/' . ltrim($project->logo, '/'));
-        } elseif (!empty($this->meta['projectLogo'])) {
-            $projectLogo = $this->meta['projectLogo'];
-        }
-
-        $primaryColor = $this->meta['primaryColor'] ?? config('app.primary_color', '#0ea5a4');
+        $this->task->loadMissing(['project', 'assignedTo', 'user']);
 
         return new Content(
             view: 'emails.task_assigned',
             with: [
                 'task' => $this->task,
-                'projectName' => $project->name ?? ($this->meta['projectName'] ?? config('app.name')),
-                'projectLogo' => $projectLogo,
-                'assigneeName' => $this->meta['assigneeName'] ?? ($this->task->assignee?->name ?? null),
-                'assignerName' => $this->meta['assignerName'] ?? null,
-                'taskUrl' => $this->meta['taskUrl'] ?? url("/projects/{$this->task->project_id}/tasks/{$this->task->id}"),
-                'companyName' => $this->meta['companyName'] ?? config('app.name'),
-                'companyContact' => $this->meta['companyContact'] ?? null,
-                'primaryColor' => $primaryColor,
-            ]
+                'assigneeName' => $this->task->assignedTo?->name,
+                'assignerName' => $this->assignerName ?? $this->task->user?->name,
+                'taskUrl' => $this->task->url(),
+                // Variables que consume el layout master (título y preheader).
+                'subject' => $this->subjectLine(),
+                'preheader' => $this->reassigned
+                    ? "Se te reasignó la tarea «{$this->task->title}». Revisa su descripción y fecha de entrega."
+                    : "Se te asignó la tarea «{$this->task->title}». Revisa su descripción y fecha de entrega.",
+            ],
         );
     }
 
@@ -77,5 +72,10 @@ class TaskAssigned extends Mailable implements ShouldQueue
     public function attachments(): array
     {
         return [];
+    }
+
+    private function subjectLine(): string
+    {
+        return ($this->reassigned ? 'Tarea reasignada: ' : 'Nueva tarea asignada: ').$this->task->title;
     }
 }

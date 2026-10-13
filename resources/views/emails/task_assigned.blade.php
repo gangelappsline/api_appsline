@@ -1,101 +1,100 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width">
-  <style>
-    :root {
-      --primary: {{ $primaryColor ?? '#0ea5a4' }};
-      --text: #0f172a;
-      --muted: #64748b;
-      --bg: #f8fafc;
-      --card: #ffffff;
-    }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial; color:var(--text); margin:0; padding:20px; background:var(--bg); }
-    .container { max-width:720px; margin:0 auto; }
-    .card { background:var(--card); border-radius:8px; overflow:hidden; box-shadow:0 6px 18px rgba(15,23,42,0.06); }
-    .header { padding:18px 24px; display:flex; align-items:center; gap:16px; border-bottom:1px solid rgba(15,23,42,0.04); }
-    .logo { max-height:56px; object-fit:contain; }
-    .title { font-size:18px; font-weight:700; color:var(--text); }
-    .content { padding:24px; }
-    h1 { margin:0 0 12px; font-size:20px; color:var(--text); }
-    p { margin:0 0 12px; color:var(--muted); line-height:1.5; }
-    .details { width:100%; border-collapse:collapse; margin:14px 0; }
-    .details td { padding:10px; border:1px solid #eef2f6; color:var(--text); vertical-align:top; }
-    .label { width:180px; font-weight:700; color:var(--muted); background:#fbfdff; }
-    .cta { text-align:center; margin:20px 0; }
-    .button { display:inline-block; background:var(--primary); color:#fff; padding:12px 20px; border-radius:8px; text-decoration:none; font-weight:600; }
-    .meta { font-size:13px; color:var(--muted); margin-top:8px; }
-    .footer { padding:16px 24px; text-align:center; font-size:13px; color:var(--muted); background:#fbfdff; }
-    @media (max-width:520px) { .content { padding:16px; } .label { display:block; width:100%; } .button { width:100%; display:block; } }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="card" role="article" aria-label="Nueva tarea asignada">
-      <div class="header">
-        @if(!empty($projectLogo))
-          <img src="{{ $projectLogo }}" alt="{{ $projectName }} logo" class="logo">
-        @else
-          <div style="width:56px;height:56px;border-radius:8px;background:var(--primary);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700">
-            {{ strtoupper(substr($projectName,0,1) ?: 'P') }}
-          </div>
-        @endif
-        <div>
-          <div class="title">Tarea asignada en {{ $projectName }}</div>
-          <div class="meta">Notificación generada automáticamente</div>
-        </div>
-      </div>
+@extends('emails.layouts.master')
 
-      <div class="content">
-        <h1>{{ $task->title }}</h1>
+@section('content')
 
-        <p>Hola {{ $assigneeName ?? 'Usuario' }},</p>
+    @php
+        // Filas del panel de detalle (solo se muestran las que tienen dato).
+        $rows = [
+            'Proyecto' => e($task->project?->name ?? '—'),
+            'Estado' => e($task->statusLabel()),
+            'Prioridad' => e($task->priorityLabel()),
+        ];
 
-        <p>Se te ha asignado la siguiente tarea. Encontrarás abajo los detalles principales y un acceso directo para revisarla.</p>
+        if ($task->due_date) {
+            $rows['Fecha de entrega'] = e($task->due_date->translatedFormat('d M Y, H:i'))
+                .' <span style="color:'.config('appsline.colors.muted').';">('
+                .e($task->due_date->diffForHumans()).')</span>';
+        } else {
+            $rows['Fecha de entrega'] = 'Sin fecha definida';
+        }
 
-        <table class="details" role="table" aria-label="Detalles de la tarea">
-          <tr>
-            <td class="label"><strong>Título</strong></td>
-            <td>{{ $task->title }}</td>
-          </tr>
-          <tr>
-            <td class="label"><strong>Descripción</strong></td>
-            <td>{!! nl2br(e($task->description ?? '—')) !!}</td>
-          </tr>
-          <tr>
-            <td class="label"><strong>Estado</strong></td>
-            <td>{{ $task->status }}</td>
-          </tr>
-          <tr>
-            <td class="label"><strong>Vencimiento</strong></td>
-            <td>{{ $task->due_date ? \Carbon\Carbon::parse($task->due_date)->toDayDateTimeString() : '—' }}</td>
-          </tr>
-          <tr>
-            <td class="label"><strong>Prioridad</strong></td>
-            <td>{{ $task->priority ?? '—' }}</td>
-          </tr>
-          <tr>
-            <td class="label"><strong>Horas estimadas</strong></td>
-            <td>{{ $task->estimated_hours ?? '—' }}</td>
-          </tr>
-          <tr>
-            <td class="label"><strong>Asignado por</strong></td>
-            <td>{{ $assignerName ?? '—' }}</td>
-          </tr>
+        if ($task->estimated_hours) {
+            $rows['Horas estimadas'] = e($task->estimated_hours).' h';
+        }
+        if ($task->category) {
+            $rows['Categoría'] = e($task->category);
+        }
+        if ($task->tags) {
+            $rows['Etiquetas'] = e($task->tags);
+        }
+        if ($assignerName) {
+            $rows['Asignada por'] = e($assignerName);
+        }
+        $rows['Creada el'] = e($task->created_at?->translatedFormat('d M Y, H:i') ?? '—');
+    @endphp
+
+    <span class="badge" style="display:inline-block; background-color:#EEF4FF; border:1px solid #C9DBFB; border-radius:999px; color:{{ config('appsline.colors.primary') }}; font-family:{{ config('appsline.font') }}; font-size:12px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; padding:6px 14px;">
+        {{ $reassigned ?? false ? 'Tarea reasignada' : 'Nueva tarea asignada' }}
+    </span>
+
+    <div style="height:18px; line-height:18px; font-size:18px;">&nbsp;</div>
+
+    <x-email.heading>{{ $task->title }}</x-email.heading>
+
+    <p class="p" style="margin:0 0 16px 0; font-family:{{ config('appsline.font') }}; font-size:16px; line-height:26px; color:{{ config('appsline.colors.body') }};">
+        Hola {{ $assigneeName ?? '—' }},
+        {{ $reassigned ? 'la siguiente tarea ahora está asignada a ti' : 'se te ha asignado la siguiente tarea' }}@if ($task->project) en el proyecto <strong style="color:{{ config('appsline.colors.ink') }};">{{ $task->project->name }}</strong>@endif.
+        Revisa la descripción completa y la fecha de entrega:
+    </p>
+
+    @if ($task->isOverdue())
+        <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color:#FEE2E2; border:1px solid #FECACA; border-radius:14px;">
+            <tr>
+                <td style="padding:14px 20px; font-family:{{ config('appsline.font') }}; font-size:14px; line-height:22px; color:#991B1B;">
+                    <strong>Esta tarea ya venció</strong> (hace {{ $task->daysOverdue() }} día(s)). Por favor revísala cuanto antes.
+                </td>
+            </tr>
         </table>
+        <div style="height:16px; line-height:16px; font-size:16px;">&nbsp;</div>
+    @elseif ($task->isDueToday())
+        <table role="presentation" width="100%" border="0" cellpadding="0" cellspacing="0" style="background-color:#FEF3C7; border:1px solid #FDE68A; border-radius:14px;">
+            <tr>
+                <td style="padding:14px 20px; font-family:{{ config('appsline.font') }}; font-size:14px; line-height:22px; color:#92400E;">
+                    <strong>Esta tarea vence hoy.</strong> Tenlo en cuenta al organizar tu día.
+                </td>
+            </tr>
+        </table>
+        <div style="height:16px; line-height:16px; font-size:16px;">&nbsp;</div>
+    @endif
 
-        <div class="cta">
-          <a href="{{ $taskUrl }}" class="button" target="_blank" rel="noopener">Ver tarea</a>
+    <x-email.heading level="h2">Descripción de la tarea</x-email.heading>
+
+    @if (filled($task->description))
+        <div style="font-family:{{ config('appsline.font') }}; font-size:16px; line-height:26px; color:{{ config('appsline.colors.body') }}; margin:0 0 8px 0;">
+            {!! nl2br(e($task->description)) !!}
         </div>
+    @else
+        <p class="p" style="margin:0 0 16px 0; font-family:{{ config('appsline.font') }}; font-size:16px; line-height:26px; color:{{ config('appsline.colors.muted') }};">
+            La tarea no tiene descripción. Si necesitas más detalle, pregúntale a quien te la asignó.
+        </p>
+    @endif
 
-        <p class="meta">Si no esperabas esta asignación o necesitas ayuda, responde este correo o contacta al responsable del proyecto.</p>
-      </div>
+    <div style="height:16px; line-height:16px; font-size:16px;">&nbsp;</div>
 
-      <div class="footer">
-        {{ $companyName }} · {{ $companyContact ?? '' }}
-      </div>
-    </div>
-  </div>
-</body>
-</html>
+    <x-email.panel title="Detalle de la tarea" :rows="$rows" />
+
+    <div style="height:24px; line-height:24px; font-size:24px;">&nbsp;</div>
+
+    <x-email.button href="{{ $taskUrl }}" label="Ver tarea" />
+
+    <div style="height:14px; line-height:14px; font-size:14px;">&nbsp;</div>
+
+    <p class="small" style="margin:0 0 12px 0; font-family:{{ config('appsline.font') }}; font-size:13px; line-height:21px; color:{{ config('appsline.colors.muted') }};">
+        Si no esperabas esta asignación o necesitas ayuda, responde este correo o contacta al responsable del proyecto.
+    </p>
+
+    <div class="divider" style="height:1px; border-top:1px solid #EDF1F7; font-size:0; line-height:0; margin:28px 0;">&nbsp;</div>
+
+    <x-email.signature />
+
+@endsection

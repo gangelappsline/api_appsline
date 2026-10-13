@@ -109,6 +109,14 @@ php artisan docs:check --skip-generation
 - `POST /api/register` usa actualmente Sanctum para crear su token; ese token no
   funciona con el guard Passport de la API.
 
+## Correos de tareas
+
+La API envía correos automáticos cuando se asigna una tarea y recordatorios
+programados (pendientes, vencimientos del día, vencidas y reporte semanal del
+viernes). Puesta en marcha (cron, colas, `.env`) y comandos en
+[docs/EMAIL_NOTIFICATIONS.md](docs/EMAIL_NOTIFICATIONS.md); probar con
+`php artisan tasks:notify-due-today --dry-run`.
+
 ## Desarrollo
 
 ```bash

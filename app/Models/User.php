@@ -34,6 +34,18 @@ class User extends Authenticatable implements OAuthenticatable
         'remember_token',
     ];
 
+    /** Tareas asignadas a este usuario. */
+    public function assignedTasks()
+    {
+        return $this->hasMany(ProjectTask::class, 'assigned_to');
+    }
+
+    /** Tareas creadas por este usuario. */
+    public function createdTasks()
+    {
+        return $this->hasMany(ProjectTask::class, 'created_by');
+    }
+
     /**
      * Get the attributes that should be cast.
      *
